@@ -1,6 +1,7 @@
 const { createHash } = require('crypto');
+const currentNodeUrl = process.env.NODE_URL;
 
-const blockchain = (chain = [], pendingTransactions = []) => {
+const blockchain = ({chain: [], pendingTransactions: [], networkNodes: []}) => {
     const createNewBlock = (nonce, previousBlockHash, hash) => {
         const newBlock = {
             index: chain.length + 1,
@@ -13,7 +14,7 @@ const blockchain = (chain = [], pendingTransactions = []) => {
 
         chain.push(newBlock);
 
-        return blockchain(chain);
+        return blockchain({ chain });
     }
 
     const getLastBlock = () => chain[chain.length-1];
@@ -24,7 +25,7 @@ const blockchain = (chain = [], pendingTransactions = []) => {
         const transaction = { amount, sender, recipient };
 
         pendingTransactions.push(transaction);
-        return  blockchain(chain, pendingTransactions);
+        return  blockchain({ chain, pendingTransactions });
     }
 
     const hashBlock = (prevBlockHash, currentBlockData, nonce) => {
@@ -43,6 +44,16 @@ const blockchain = (chain = [], pendingTransactions = []) => {
 
     const getPendingTransactions = () =>  pendingTransactions;
 
+    const getNetworkNodes = () => networkNodes;
+
+    const addNetworkNode = (node) => {
+        if (networkNodes.includes(node)) {
+            return false;
+        }
+
+        return blockchain({ chain, pendingTransactions, networkNodes: networkNodes.pop(node)  });
+    }
+
     return {
         createNewBlock,
         toJSON,
@@ -51,6 +62,8 @@ const blockchain = (chain = [], pendingTransactions = []) => {
         proofOfWork,
         getLastBlock,
         getPendingTransactions,
+        getNetworkNodes,
+        addNetworkNode
     }
 }
 
