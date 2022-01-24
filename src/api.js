@@ -1,83 +1,174 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const app = express();
-const blockchain = require('./blockchain');
-let port = process.env.PORT || 3000;
-const nodeUrl = process.env.NODE_URL || `http://localhost:${port}`;
 const crypto = require('crypto');
-const cluster = require("cluster");
-const totalCPUs = require("os").cpus().length;
+const cluster = require('cluster');
+const totalCPUs = require('os').cpus().length;
+const axios = require('axios');
+const blockchain = require('./blockchain');
+
+const app = express();
+
+let port = process.env.PORT || 3000;
+
+const getNodeUrl = () => `http://localhost:${port}`;
 
 if (cluster.isMaster) {
   console.log(`Number of CPUs is ${totalCPUs}`);
   console.log(`Master ${process.pid} is running`);
 
-  // Fork workers.
   for (let i = 0; i < totalCPUs; i++) {
-    cluster.fork({PORT: port++, NODE_URL: nodeUrl});
+    port += 1;
+    cluster.fork({ PORT: port, NODE_URL: getNodeUrl(port) });
   }
 
-  cluster.on("exit", (worker, code, signal) => {
+  cluster.on('exit', (worker) => {
+    port += 1;
     console.log(`worker ${worker.process.pid} died`);
     console.log("Let's fork another worker!");
-    cluster.fork({PORT: port++, NODE_URL: nodeUrl});
+    cluster.fork({ PORT: port, NODE_URL: getNodeUrl(port) });
   });
 } else {
-  const  nodeAddress = crypto.randomBytes(16).toString('hex');
+  const nodeAddress = crypto.randomBytes(16).toString('hex');
 
   let coin = blockchain()
     .createNewBlock(123, 'ffasd', '4rfsw45'); // genesis block
-  
+
   app.use(bodyParser.json());
-  app.use(bodyParser.urlencoded({extended: false}));
-  
+  app.use(bodyParser.urlencoded({ extended: false }));
+
   app.get('/blockchain', (req, res) => {
     res.send(coin.toJSON());
   });
-  
+
   app.post('/transaction', (req, res) => {
-    console.log(req.body);
-    const { amount, sender, recipient } = req.body;
-    console.log(amount, sender, recipient, 'amount, sender, recipient');
-    coin = coin.createNewTransaction( amount, sender, recipient );
-    const lastBlock = coin.getLastBlock();
-    console.log(lastBlock, 'lastblock');
-    res.json({ note: `Will be added in ${lastBlock['index']+1}`});
+    const {
+      amount, sender, recipient, transactionId,
+    } = req.body;
+    coin = coin.addTransactionToPendingTransactions({
+      amount, sender, recipient, transactionId,
+    });
+    res.json({ note: `transaction will be added in ${coin.getLastBlock() + 1}` });
   });
-  
-  app.get('/mine', (req, res) => {
-    const { hash: lastBlockHash, index: lastBlockIndex } =  coin.getLastBlock();
+
+  app.post('/transaction/broadcast', async (req, res) => {
+    const { amount, sender, recipient } = req.body;
+    const newTransaction = coin.createNewTransaction(amount, sender, recipient);
+    coin = coin.addTransactionToPendingTransactions(newTransaction);
+
+    const promises = [];
+    coin.getNetworkNodes().forEach((networkNodeUrl) => {
+      promises.push(axios.post(`${networkNodeUrl}/transaction`, newTransaction));
+    });
+
+    try {
+      await Promise.all(promises);
+      res.json({ note: 'Transaction broadcasted' });
+    } catch (e) {
+      console.error('Cannot broadcast transaction', e);
+    }
+  });
+
+  app.get('/mine', async (req, res) => {
+    const { hash: lastBlockHash, index: lastBlockIndex } = coin.getLastBlock();
     const currentBlockData = {
       transactions: coin.getPendingTransactions(),
       index: lastBlockIndex + 1,
-  
-    }
+
+    };
     const nonce = coin.proofOfWork(lastBlockHash, currentBlockData);
     const blockHash = coin.hashBlock(lastBlockHash, currentBlockData, nonce);
-  
-    coin.createNewTransaction(12.5, "00", nodeAddress);
-  
+
     coin = coin.createNewBlock(nonce, lastBlockHash, blockHash);
-    res.json({
-      note: "New block mined",
-      block: coin.getLastBlock(),
+    const newBlock = coin.getLastBlock();
+
+    const promises = [];
+    coin.getNetworkNodes().forEach((nodeUrl) => {
+      promises.push(axios.post(`${nodeUrl}/receive-new-block`, { newBlock })
+        .catch((e) => console.error(`Cannot bloadcast new block to ${nodeUrl}`, e)));
+    });
+
+    try {
+      await Promise.all(promises);
+
+      await axios.post(`${coin.getCurrentNodeUrl()}/transaction/broadcast`, {
+        amount: 2.15,
+        sender: '00',
+        recipient: nodeAddress,
+      });
+
+      res.json({
+        note: 'New block mined',
+        block: coin.getLastBlock(),
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  });
+
+  app.post('/receive-new-block', async (req, res) => {
+    const { newBlock } = req.body;
+
+    const lastBlock = coin.getLastBlock();
+    const correctHash = lastBlock.hash === newBlock.previousBlockHash;
+    const correctIndex = lastBlock.index + 1 === newBlock.index;
+
+    if (correctHash && correctIndex) {
+      coin = coin.addBlock(newBlock);
+
+      return res.json({
+        note: 'New block accepted',
+        newBlock,
+      });
+    }
+
+    return res.json({
+      note: 'Block rejected',
+      newBlock,
     });
   });
 
-  app.post('/node/register-and-broadcast', (req, res) => {
-    const { newNodeUrl }  = req.body;
-    blockchain.addNetworkNode(newNodeUrl);
+  app.post('/node/register-and-broadcast', async (req, res) => {
+    const { newNodeUrl } = req.body;
+    coin = coin.addNetworkNode(newNodeUrl);
+
+    const nodeRegisterPromises = [];
+    coin.getNetworkNodes().forEach((nodeUrl) => {
+      nodeRegisterPromises.push(axios.post(`${nodeUrl}/node/register`, {
+        newNodeUrl,
+      }));
+    });
+
+    try {
+      await Promise.all(nodeRegisterPromises);
+    } catch (e) {
+      console.error(e, 'Error on node registration');
+    }
+
+    try {
+      await axios.post(`${newNodeUrl}/nodes/register`, {
+        allNetworkNodes: [...coin.getNetworkNodes(), coin.getCurrentNodeUrl()],
+      });
+
+      res.json({ note: 'new node registered' });
+    } catch (e) {
+      console.error(e, 'cannot register bulk nodes');
+    }
   });
 
-  app.post('/node', (req, res) => {
+  app.post('/node/register', (req, res) => {
+    const { newNodeUrl } = req.body;
 
+    coin = coin.addNetworkNode(newNodeUrl);
+    res.json({ note: 'New node registered' });
   });
 
-  app.post('/nodes', (req, res) => {
-
+  app.post('/nodes/register', (req, res) => {
+    const { allNetworkNodes } = req.body;
+    coin = coin.addNetworkNodes(allNetworkNodes);
+    res.json({ note: 'Nodes added' });
   });
-  
+
   app.listen(port, () => {
-    console.log(`Blockchain app listening at http://localhost:${port}`)
+    console.log(`Blockchain app listening at http://localhost:${port}`);
   });
 }
