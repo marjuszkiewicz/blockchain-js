@@ -31,7 +31,7 @@ if (cluster.isMaster) {
   const nodeAddress = crypto.randomBytes(16).toString('hex');
 
   let coin = blockchain()
-    .createNewBlock(123, 'ffasd', '4rfsw45'); // genesis block
+    .createNewBlock(100, '0', '0'); // genesis block
 
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: false }));
@@ -166,6 +166,35 @@ if (cluster.isMaster) {
     const { allNetworkNodes } = req.body;
     coin = coin.addNetworkNodes(allNetworkNodes);
     res.json({ note: 'Nodes added' });
+  });
+
+  app.get('/consensus', async (req, res) => {
+    const networkNodes = coin.getNetworkNodes();
+    let chainReplaced = false;
+
+    const promises = [];
+    networkNodes.forEach(nodeUrl => {
+      promises.push(axios.get(`${nodeUrl}/blockchain`));
+    });
+
+    const blockchains = (await Promise.all(promises))
+      .map((response) => {
+        const { data: bc } = response;
+        return blockchain(bc.chain, bc.pendingTransactions, networkNodes);
+    });
+
+
+    blockchains.forEach(blockchain => {
+      if (blockchain.getChainLength() > coin.getChainLength() && blockchain.chainIsValid()) {
+        coin = blockchain;
+        chainReplaced = true;
+      }
+    });
+
+    res.json({
+      note: chainReplaced ? 'Chain has been replaced' : 'Chain not replaced',
+      chain: coin.getChain(),
+    })
   });
 
   app.listen(port, () => {

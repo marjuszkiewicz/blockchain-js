@@ -74,6 +74,38 @@ const blockchain = (chain = [], pendingTransactions = [], networkNodes = []) => 
 
   const addBlock = (block) => blockchain(chain.concat([block]), [], networkNodes);
 
+  const chainIsValid = () => {
+    let isValid = true;
+    for (let i = 1; i < chain.length; i++) {
+        const currentBlock = chain[i];
+        const prevBlock = chain[i-1];
+        const blockHash = hashBlock(prevBlock.hash, { transactions: currentBlock.transactions, index: currentBlock.index }, currentBlock.nonce);
+
+        if (blockHash.substring(0,4) !== '0000') {
+            isValid = false;
+        }
+        if (currentBlock.previousBlockHash !== prevBlock.hash) {
+            isValid = false;
+        }
+    }
+
+    const genesisBlock = chain[0];
+    const correctNonce = genesisBlock.nonce === 100;
+    const correctPrevBlickHash = genesisBlock.previousBlockHash === '0';
+    const correctHash = genesisBlock.hash === '0';
+    const correctTransactions = genesisBlock.transactions.length === 0;
+
+    if (!correctNonce || !correctPrevBlickHash || !correctHash || !correctTransactions) {
+        isValid = false;
+    }
+
+    return isValid;
+  };
+
+  const getChain = () => chain;
+
+  const getChainLength = () => chain.length;
+
   return {
     createNewBlock,
     toJSON,
@@ -88,6 +120,9 @@ const blockchain = (chain = [], pendingTransactions = [], networkNodes = []) => 
     addNetworkNodes,
     addTransactionToPendingTransactions,
     addBlock,
+    chainIsValid,
+    getChain,
+    getChainLength,
   };
 };
 
