@@ -173,7 +173,7 @@ if (cluster.isMaster) {
     let chainReplaced = false;
 
     const promises = [];
-    networkNodes.forEach(nodeUrl => {
+    networkNodes.forEach((nodeUrl) => {
       promises.push(axios.get(`${nodeUrl}/blockchain`));
     });
 
@@ -181,12 +181,11 @@ if (cluster.isMaster) {
       .map((response) => {
         const { data: bc } = response;
         return blockchain(bc.chain, bc.pendingTransactions, networkNodes);
-    });
+      });
 
-
-    blockchains.forEach(blockchain => {
-      if (blockchain.getChainLength() > coin.getChainLength() && blockchain.chainIsValid()) {
-        coin = blockchain;
+    blockchains.forEach((bc) => {
+      if (bc.getChainLength() > coin.getChainLength() && bc.chainIsValid()) {
+        coin = bc;
         chainReplaced = true;
       }
     });
@@ -194,7 +193,32 @@ if (cluster.isMaster) {
     res.json({
       note: chainReplaced ? 'Chain has been replaced' : 'Chain not replaced',
       chain: coin.getChain(),
-    })
+    });
+  });
+
+  app.get('/block/:blockHash', (req, res) => {
+    const { blockHash } = req.params;
+    const block = coin.getBlock(blockHash);
+    if (!block) {
+      return res.status(404);
+    }
+
+    return res.json({ block });
+  });
+
+  app.get('/transaction/:transactionId', (req, res) => {
+    const { transactionId } = req.params;
+    const { block, transaction } = coin.getTransaction(transactionId);
+
+    res.json({ block, transaction });
+  });
+
+  app.get('/address/:address', (req, res) => {
+    const { address } = req.params;
+    const addressData = coin.getAddressData(address);
+    res.json({
+      addressData,
+    });
   });
 
   app.listen(port, () => {

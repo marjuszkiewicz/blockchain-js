@@ -77,16 +77,20 @@ const blockchain = (chain = [], pendingTransactions = [], networkNodes = []) => 
   const chainIsValid = () => {
     let isValid = true;
     for (let i = 1; i < chain.length; i++) {
-        const currentBlock = chain[i];
-        const prevBlock = chain[i-1];
-        const blockHash = hashBlock(prevBlock.hash, { transactions: currentBlock.transactions, index: currentBlock.index }, currentBlock.nonce);
+      const currentBlock = chain[i];
+      const prevBlock = chain[i - 1];
+      const blockHash = hashBlock(
+        prevBlock.hash,
+        { transactions: currentBlock.transactions, index: currentBlock.index },
+        currentBlock.nonce,
+      );
 
-        if (blockHash.substring(0,4) !== '0000') {
-            isValid = false;
-        }
-        if (currentBlock.previousBlockHash !== prevBlock.hash) {
-            isValid = false;
-        }
+      if (blockHash.substring(0, 4) !== '0000') {
+        isValid = false;
+      }
+      if (currentBlock.previousBlockHash !== prevBlock.hash) {
+        isValid = false;
+      }
     }
 
     const genesisBlock = chain[0];
@@ -96,7 +100,7 @@ const blockchain = (chain = [], pendingTransactions = [], networkNodes = []) => 
     const correctTransactions = genesisBlock.transactions.length === 0;
 
     if (!correctNonce || !correctPrevBlickHash || !correctHash || !correctTransactions) {
-        isValid = false;
+      isValid = false;
     }
 
     return isValid;
@@ -105,6 +109,41 @@ const blockchain = (chain = [], pendingTransactions = [], networkNodes = []) => 
   const getChain = () => chain;
 
   const getChainLength = () => chain.length;
+
+  const getBlock = (blockHash) => chain.find((block) => block.hash === blockHash);
+
+  const getTransaction = (transactionId) => {
+    const chainWithTransaction = chain.find(
+      (block) => block.transactions
+        .find((singleTransaction) => singleTransaction.transactionId === transactionId),
+    );
+    const transaction = chainWithTransaction
+      .find((singleTransaction) => singleTransaction.transactionId === transactionId);
+
+    return { block: chainWithTransaction, transaction };
+  };
+
+  const getAddressData = (address) => {
+    const addressTransactions = [];
+    chain.forEach((block) => {
+      block.transactions.forEach((transaction) => {
+        if (transaction.recipient === address || transaction.sender === address) {
+          addressTransactions.push(transaction);
+        }
+      });
+    });
+
+    const addressBalance = addressTransactions
+      .reduce(
+        (prev, curr) => (address === curr.sender ? prev - curr.amount : prev + curr.amount),
+        0,
+      );
+
+    return {
+      addressTransactions,
+      addressBalance,
+    };
+  };
 
   return {
     createNewBlock,
@@ -123,6 +162,9 @@ const blockchain = (chain = [], pendingTransactions = [], networkNodes = []) => 
     chainIsValid,
     getChain,
     getChainLength,
+    getBlock,
+    getTransaction,
+    getAddressData,
   };
 };
 

@@ -1,27 +1,22 @@
 {
-  "name": "blockchain",
+  "name": "blockchain-js",
   "version": "1.0.0",
   "description": "",
-  "main": "src/api.js",
+  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon --watch src -e js",
-    "lint": "eslint src/**/*.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marjuszkiewicz/blockchain-js.git"
   },
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "axios": "^0.24.0",
-    "body-parser": "^1.19.1",
-    "express": "^4.17.2"
+  "bugs": {
+    "url": "https://github.com/marjuszkiewicz/blockchain-js/issues"
   },
-  "devDependencies": {
-    "eslint": "^8.7.0",
-    "eslint-config-airbnb": "^19.0.4",
-    "eslint-plugin-import": "^2.25.4",
-    "eslint-plugin-jsx-a11y": "^6.5.1",
-    "eslint-plugin-react": "^7.28.0",
-    "eslint-plugin-react-hooks": "^4.3.0",
-    "nodemon": "^2.0.15"
-  }
+  "homepage": "https://github.com/marjuszkiewicz/blockchain-js#readme",
+  "workspaces": [
+    "packages/blockchain-nodes"
+  ]
 }
